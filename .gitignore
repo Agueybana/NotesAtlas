@@ -1,0 +1,7 @@
+.DS_Store
+notes-atlas-launch.log
+*.pyc
+notes-catalog/__pycache__/
+notes-catalog/data/*.db
+notes-catalog/data/*.db-shm
+notes-catalog/data/*.db-wal

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notes Atlas</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <div class="shell">
+      <aside class="sidebar panel">
+        <div class="sidebar-header">
+          <div class="eyebrow">Local Apple Notes Catalog</div>
+          <h1>Notes Atlas</h1>
+          <p>
+            Safe, read-only cataloging for Apple Notes. Search, filter, recategorize locally, and
+            jump back into Notes with one click.
+          </p>
+        </div>
+
+        <label class="search-wrap">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="Search titles, snippets, categories" />
+        </label>
+
+        <div class="sidebar-actions">
+          <button id="syncButton" class="btn btn-primary" type="button">Sync notes</button>
+          <button id="addCategoryButton" class="btn btn-secondary" type="button">New category</button>
+        </div>
+
+        <div class="sync-card">
+          <div class="sync-row">
+            <span>Sync status</span>
+            <strong id="syncPhase">Idle</strong>
+          </div>
+          <div id="syncMessage" class="sync-message">Waiting to sync.</div>
+          <div class="progress-track">
+            <div id="syncProgress" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="filters">
+          <div class="filters-header">
+            <span>Categories</span>
+            <button id="clearFiltersButton" class="linkish" type="button">Clear</button>
+          </div>
+          <nav id="categoryTree" class="category-tree" aria-label="Category filters"></nav>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="hero panel">
+          <div>
+            <div class="eyebrow">Catalog dashboard</div>
+            <h2 id="resultsTitle">All notes</h2>
+            <p id="resultsSummary">
+              Search through your catalog, filter by subject, and open any note directly in Apple
+              Notes.
+            </p>
+          </div>
+          <div class="hero-stats">
+            <div class="stat-card">
+              <span>Total notes</span>
+              <strong id="statTotal" class="stat-value">0</strong>
+            </div>
+            <div class="stat-card">
+              <span>Visible results</span>
+              <strong id="statVisible" class="stat-value">0</strong>
+            </div>
+            <div class="stat-card">
+              <span>Current filter</span>
+              <strong id="statFilter" class="stat-value stat-filter-value">All</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="notes-panel panel">
+          <div class="notes-toolbar">
+            <div class="notes-toolbar-copy">
+              <h3>Catalog</h3>
+              <p>Click a note to open it in Notes. Use the ellipsis to move it to a different category.</p>
+            </div>
+          </div>
+
+          <div id="notesList" class="notes-list"></div>
+
+          <div class="notes-footer">
+            <button id="loadMoreButton" class="btn btn-secondary" type="button">Load more</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="categoryDialog" class="dialog">
+      <form method="dialog" class="dialog-card" id="categoryForm">
+        <div class="dialog-header">
+          <h3>Create category</h3>
+          <button class="icon-button" value="cancel" aria-label="Close">×</button>
+        </div>
+        <label>
+          <span>Category</span>
+          <input id="categoryNameInput" required type="text" placeholder="e.g. Research" />
+        </label>
+        <label>
+          <span>Subcategory</span>
+          <input id="subcategoryNameInput" type="text" placeholder="e.g. Case studies" />
+        </label>
+        <div class="dialog-actions">
+          <button value="cancel" class="btn btn-secondary" type="button" id="cancelCategoryButton">
+            Cancel
+          </button>
+          <button class="btn btn-primary" type="submit">Save category</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="moveDialog" class="dialog">
+      <form method="dialog" class="dialog-card" id="moveForm">
+        <div class="dialog-header">
+          <h3>Move note</h3>
+          <button class="icon-button" value="cancel" aria-label="Close">×</button>
+        </div>
+        <p id="moveDialogTitle" class="dialog-subtitle"></p>
+        <label>
+          <span>Category</span>
+          <select id="moveCategorySelect"></select>
+        </label>
+        <label>
+          <span>Subcategory</span>
+          <select id="moveSubcategorySelect"></select>
+        </label>
+        <div class="dialog-actions">
+          <button value="cancel" class="btn btn-secondary" type="button" id="cancelMoveButton">
+            Cancel
+          </button>
+          <button class="btn btn-primary" type="submit">Move note</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="suggestDialog" class="dialog">
+      <div class="dialog-card dialog-card-wide">
+        <div class="dialog-header">
+          <h3>Suggested categories</h3>
+          <button class="icon-button" type="button" id="closeSuggestButton" aria-label="Close">×</button>
+        </div>
+        <p id="suggestDialogTitle" class="dialog-subtitle"></p>
+        <p class="dialog-copy">
+          These suggestions re-evaluate the note’s content. Click a suggestion to review the move,
+          then confirm or cancel before it is saved locally.
+        </p>
+        <div id="suggestionsList" class="suggestions-list">
+          <div class="suggestion-loading">Loading suggestions…</div>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
