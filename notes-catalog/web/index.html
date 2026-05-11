@@ -77,6 +77,33 @@
           </div>
         </section>
 
+        <section class="mind-map-panel panel">
+          <div class="mind-map-copy">
+            <div class="eyebrow">Knowledge graph</div>
+            <h3>Mind maps</h3>
+            <p>
+              Builds a local graph from category, subcategory, note, and recurring concept nodes.
+              It uses cached titles and snippets from the catalog, then opens the interactive map
+              in a new Safari tab.
+            </p>
+          </div>
+          <div class="mind-map-action">
+            <button id="mindMapButton" class="btn btn-primary" type="button">Generate Mind Map</button>
+            <div class="mind-map-status">
+              <div class="sync-row">
+                <span>Mind map status</span>
+                <strong id="mindMapPhase">Ready</strong>
+              </div>
+              <div id="mindMapMessage" class="sync-message">
+                Waiting to build the graph from the local catalog.
+              </div>
+              <div class="progress-track">
+                <div id="mindMapProgress" class="progress-fill"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="notes-panel panel">
           <div class="notes-toolbar">
             <div class="notes-toolbar-copy">

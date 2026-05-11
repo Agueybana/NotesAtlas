@@ -15,8 +15,8 @@ RECORD_SEP = chr(30)
 FIELD_SEP = chr(31)
 SECTION_SEP = chr(29)
 MAX_SEARCH_TEXT = 2200
-MAX_SNIPPET_BATCH = 5
-SYNC_PORTION_FOR_DEEP_READ = 240
+MAX_SNIPPET_BATCH = 24
+SYNC_PORTION_FOR_DEEP_READ: int | None = None
 
 
 STOPWORDS = {
@@ -268,6 +268,30 @@ TAXONOMY: dict[str, dict[str, list[str]]] = {
             "funding",
         ],
     },
+    "Science": {
+        "Research": [
+            "research",
+            "lab",
+            "experiment",
+            "hypothesis",
+            "paper",
+            "study",
+            "phd",
+            "academia",
+            "scientific",
+        ],
+        "Genetics & biology": [
+            "dna",
+            "genome",
+            "genes",
+            "genetic",
+            "sequencing",
+            "bacteria",
+            "microbiology",
+            "biology",
+            "molecular",
+        ],
+    },
     "Relationships": {
         "Women": [
             "women",
@@ -463,6 +487,10 @@ TAXONOMY: dict[str, dict[str, list[str]]] = {
             "grok",
             "deepseek",
             "model",
+            "prompting",
+            "intelligence",
+            "agent",
+            "agents",
         ],
         "Software & code": [
             "software",
@@ -475,6 +503,10 @@ TAXONOMY: dict[str, dict[str, list[str]]] = {
             "website",
             "database",
             "automation",
+            "error",
+            "fixed",
+            "debug",
+            "user",
         ],
         "Computing & internet": [
             "technology",
@@ -555,6 +587,7 @@ TAXONOMY: dict[str, dict[str, list[str]]] = {
             "wellness",
             "body",
             "nutrition",
+            "pain",
         ],
         "Mental health": [
             "depression",
@@ -564,6 +597,7 @@ TAXONOMY: dict[str, dict[str, list[str]]] = {
             "trauma",
             "healing",
             "psychology",
+            "adhd",
         ],
     },
     "Business": {
@@ -575,6 +609,7 @@ TAXONOMY: dict[str, dict[str, list[str]]] = {
             "execution",
             "operations",
             "scaling",
+            "opportunity",
         ],
         "Leadership": [
             "leadership",
@@ -629,10 +664,14 @@ TAXONOMY: dict[str, dict[str, list[str]]] = {
     "Personal": {
         "Journal": [
             "journal",
+            "diary",
             "today",
             "yesterday",
             "felt",
+            "feel",
             "my life",
+            "life",
+            "vida",
             "myself",
             "experience",
             "realization",
@@ -645,6 +684,22 @@ TAXONOMY: dict[str, dict[str, list[str]]] = {
             "project",
             "next step",
             "todo",
+        ],
+    },
+    "Projects": {
+        "BouncyPaint": [
+            "bouncypaint",
+            "bouncy paint",
+        ],
+        "BODS / BODSai": [
+            "bods",
+            "bodsai",
+        ],
+        "AGM Wisdom Center": [
+            "agm",
+            "wisdom center",
+            "craftee",
+            "craftychat",
         ],
     },
     "Reference": {
@@ -893,7 +948,7 @@ def rank_category_suggestions(
     return generic[:limit]
 
 
-def classify_note(original_name: str, snippet: str = "") -> dict[str, Any]:
+def classify_note(original_name: str, snippet: str = "", force_category: bool = False) -> dict[str, Any]:
     name = normalize_spaces(original_name)
     text_source = f"{name}\n{snippet}".strip()
     haystack = normalize_for_match(text_source)
@@ -928,6 +983,10 @@ def classify_note(original_name: str, snippet: str = "") -> dict[str, Any]:
         category = "Uncategorized"
         subcategory = "General"
         confidence = 0.08
+        if force_category and snippet.strip():
+            fallback = fallback_suggestions(original_name, snippet)
+            category, subcategory = fallback[0][0], fallback[0][1]
+            confidence = 0.12
     else:
         category, subcategory, top_score = best
         margin = top_score - second_score
@@ -1053,7 +1112,7 @@ class CatalogStore:
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=60)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
@@ -1160,6 +1219,8 @@ class CatalogStore:
                         note["category"] = previous["category"]
                         note["subcategory"] = previous["subcategory"]
                         note["confidence"] = previous["classifier_confidence"]
+                        if note["category"] == "Uncategorized":
+                            note.update(classify_note(note["original_name"], note["search_text"], force_category=True))
 
                     collected.append(note)
                 processed += len(notes)
@@ -1268,12 +1329,15 @@ class CatalogStore:
             low_conf = note["confidence"] < 0.5 if "confidence" in note else note["classifier_confidence"] < 0.5
             uncategorized = note.get("category") == "Uncategorized"
             changed = not previous or previous["modified_at"] != note["modified_at"] or previous["original_name"] != note["original_name"]
+            missing_search_text = not previous or not previous["search_text"]
             if note["password_protected"]:
                 continue
-            if generic or (changed and (low_conf or uncategorized)):
+            if uncategorized or missing_search_text or generic or (changed and low_conf):
                 candidates.append(note)
 
         candidates.sort(key=lambda item: item["modified_at"], reverse=True)
+        if SYNC_PORTION_FOR_DEEP_READ is None:
+            return candidates
         return candidates[:SYNC_PORTION_FOR_DEEP_READ]
 
     def _enrich_with_snippets(self, notes: list[dict[str, Any]], targets: list[dict[str, Any]]) -> None:
@@ -1285,13 +1349,13 @@ class CatalogStore:
         enriched = 0
         total = len(targets)
         for (account_name, folder_name), indexes in by_folder.items():
-            for start, end in self._group_ranges(sorted(indexes), MAX_SNIPPET_BATCH):
-                rows = self.fetch_snippet_batch(account_name, folder_name, start, end)
+            for chunk in self._chunks(sorted(indexes), MAX_SNIPPET_BATCH):
+                rows = self.fetch_snippet_indexes(account_name, folder_name, chunk)
                 for row in rows:
                     note = by_id.get(row["note_id"])
                     if not note:
                         continue
-                    classified = classify_note(note["original_name"], row["snippet"])
+                    classified = classify_note(note["original_name"], row["snippet"], force_category=True)
                     note.update(classified)
                     enriched += 1
                 self.sync.update(current=min(enriched, total))
@@ -1299,6 +1363,13 @@ class CatalogStore:
     def fetch_snippet_batch(self, account_name: str, folder_name: str, start_index: int, end_index: int) -> list[dict[str, str]]:
         if start_index > end_index:
             return []
+        return self.fetch_snippet_indexes(account_name, folder_name, list(range(start_index, end_index + 1)))
+
+    def fetch_snippet_indexes(self, account_name: str, folder_name: str, indexes: list[int]) -> list[dict[str, str]]:
+        indexes = [int(index) for index in indexes if int(index) > 0]
+        if not indexes:
+            return []
+        index_list = "{" + ", ".join(str(index) for index in indexes) + "}"
         script = f"""
         on replace_text(theText, findText, replaceText)
             set AppleScript's text item delimiters to findText
@@ -1319,32 +1390,36 @@ class CatalogStore:
 
         set us to character id {ord(FIELD_SEP)}
         set rs to character id {ord(RECORD_SEP)}
+        set indexList to {index_list}
+        set rowCount to 0
+        set out to ""
         tell application "Notes"
             tell folder "{apple_escape(folder_name)}" of account "{apple_escape(account_name)}"
-                set ids to id of notes {start_index} thru {end_index}
-                set texts to plaintext of notes {start_index} thru {end_index}
+                repeat with noteIndex in indexList
+                    try
+                        set targetNote to note (noteIndex as integer)
+                        set noteId to id of targetNote
+                        set snippetText to plaintext of targetNote
+                        if (length of snippetText) > {MAX_SEARCH_TEXT} then
+                            set snippetText to text 1 thru {MAX_SEARCH_TEXT} of snippetText
+                        end if
+                        if rowCount > 0 then set out to out & rs
+                        set out to out & (my sanitize(noteId)) & us & (my sanitize(snippetText))
+                        set rowCount to rowCount + 1
+                    end try
+                end repeat
             end tell
         end tell
-
-        set out to ""
-        repeat with i from 1 to (count of ids)
-            set snippetText to item i of texts
-            if (length of snippetText) > {MAX_SEARCH_TEXT} then
-                set snippetText to text 1 thru {MAX_SEARCH_TEXT} of snippetText
-            end if
-            set out to out & (my sanitize(item i of ids)) & us & (my sanitize(snippetText))
-            if i is not (count of ids) then set out to out & rs
-        end repeat
         return out
         """
         try:
-            raw = run_osascript(script, timeout=240)
+            raw = run_osascript(script, timeout=300)
         except Exception:
-            if start_index == end_index:
+            if len(indexes) <= 1:
                 return []
-            midpoint = (start_index + end_index) // 2
-            left = self.fetch_snippet_batch(account_name, folder_name, start_index, midpoint)
-            right = self.fetch_snippet_batch(account_name, folder_name, midpoint + 1, end_index)
+            midpoint = len(indexes) // 2
+            left = self.fetch_snippet_indexes(account_name, folder_name, indexes[:midpoint])
+            right = self.fetch_snippet_indexes(account_name, folder_name, indexes[midpoint:])
             return left + right
 
         results = []
@@ -1356,6 +1431,9 @@ class CatalogStore:
             note_id, snippet = row.split(FIELD_SEP, 1)
             results.append({"note_id": note_id, "snippet": snippet})
         return results
+
+    def _chunks(self, indexes: list[int], size: int) -> list[list[int]]:
+        return [indexes[index : index + size] for index in range(0, len(indexes), size)]
 
     def _group_ranges(self, indexes: list[int], max_batch: int) -> list[tuple[int, int]]:
         if not indexes:
@@ -1611,6 +1689,128 @@ class CatalogStore:
                 (note_id, category, subcategory, now_iso()),
             )
 
+    def recategorize_uncategorized_blocking(self) -> dict[str, int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    n.note_id,
+                    n.account_name,
+                    n.folder_name,
+                    n.note_index,
+                    n.original_name,
+                    n.preview_text,
+                    n.search_text
+                FROM notes n
+                LEFT JOIN note_overrides o ON o.note_id = n.note_id
+                WHERE n.is_active = 1
+                  AND o.note_id IS NULL
+                  AND (
+                    n.category = 'Uncategorized'
+                    OR (
+                        n.category = 'Writing'
+                        AND n.subcategory = 'Drafts & essays'
+                        AND n.classifier_confidence <= 0.13
+                    )
+                  )
+                  AND n.password_protected = 0
+                ORDER BY n.folder_name, n.note_index
+                """
+            ).fetchall()
+
+        total = len(rows)
+        self.sync.start("recategorize", f"Deep-reading {total} uncategorized notes", total=total)
+        if total == 0:
+            self.sync.finish("No uncategorized notes needed recategorization.")
+            return {"total": 0, "updated": 0, "remaining": 0}
+
+        notes = [dict(row) for row in rows]
+        updates: list[dict[str, Any]] = []
+        remaining_for_notes_read: list[dict[str, Any]] = []
+        for note in notes:
+            cached_text = note.get("search_text") or note.get("preview_text") or ""
+            if not cached_text.strip():
+                remaining_for_notes_read.append(note)
+                continue
+            classified = classify_note(note["original_name"], cached_text, force_category=True)
+            if classified["category"] == "Uncategorized":
+                remaining_for_notes_read.append(note)
+                continue
+            updates.append(
+                {
+                    "note_id": note["note_id"],
+                    "generated_title": classified["generated_title"],
+                    "preview_text": classified["preview_text"],
+                    "search_text": classified["search_text"],
+                    "category": classified["category"],
+                    "subcategory": classified["subcategory"],
+                    "classifier_confidence": classified["confidence"],
+                    "last_synced_at": now_iso(),
+                }
+            )
+
+        by_folder: dict[tuple[str, str], list[int]] = defaultdict(list)
+        by_id = {note["note_id"]: note for note in remaining_for_notes_read}
+        for note in remaining_for_notes_read:
+            by_folder[(note["account_name"], note["folder_name"])].append(int(note["note_index"]))
+
+        processed = len(notes) - len(remaining_for_notes_read)
+        self.sync.update(current=processed)
+        for (account_name, folder_name), indexes in by_folder.items():
+            self.sync.update(message=f"Reading {account_name} / {folder_name}")
+            for chunk in self._chunks(sorted(indexes), MAX_SNIPPET_BATCH):
+                snippet_rows = self.fetch_snippet_indexes(account_name, folder_name, chunk)
+                for row in snippet_rows:
+                    note = by_id.get(row["note_id"])
+                    if not note:
+                        continue
+                    classified = classify_note(note["original_name"], row["snippet"], force_category=True)
+                    if classified["category"] == "Uncategorized":
+                        continue
+                    updates.append(
+                        {
+                            "note_id": note["note_id"],
+                            "generated_title": classified["generated_title"],
+                            "preview_text": classified["preview_text"],
+                            "search_text": classified["search_text"],
+                            "category": classified["category"],
+                            "subcategory": classified["subcategory"],
+                            "classifier_confidence": classified["confidence"],
+                            "last_synced_at": now_iso(),
+                        }
+                    )
+                processed += len(chunk)
+                self.sync.update(current=min(processed, total))
+
+        with self._connect() as conn:
+            conn.executemany(
+                """
+                UPDATE notes
+                SET generated_title = :generated_title,
+                    preview_text = :preview_text,
+                    search_text = :search_text,
+                    category = :category,
+                    subcategory = :subcategory,
+                    classifier_confidence = :classifier_confidence,
+                    last_synced_at = :last_synced_at
+                WHERE note_id = :note_id
+                """,
+                updates,
+            )
+            remaining = conn.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM notes n
+                LEFT JOIN note_overrides o ON o.note_id = n.note_id
+                WHERE n.is_active = 1
+                  AND COALESCE(o.category, n.category) = 'Uncategorized'
+                """
+            ).fetchone()["c"]
+
+        summary = f"Recategorized {len(updates)} of {total} uncategorized notes. {remaining} remain uncategorized."
+        self.sync.finish(summary)
+        return {"total": total, "updated": len(updates), "remaining": int(remaining)}
+
     def suggest_categories(self, note_id: str, limit: int = 3) -> dict[str, Any]:
         if not note_id:
             raise ValueError("Note id is required")
@@ -1662,6 +1862,251 @@ class CatalogStore:
             "current_category": row["category"],
             "current_subcategory": row["subcategory"],
             "suggestions": unique_suggestions[:limit],
+        }
+
+    def mind_map_meta(self) -> dict[str, Any]:
+        with self._connect() as conn:
+            active_notes = conn.execute("SELECT COUNT(*) AS c FROM notes WHERE is_active = 1").fetchone()["c"]
+            categories = conn.execute(
+                """
+                SELECT COUNT(DISTINCT COALESCE(o.category, n.category)) AS c
+                FROM notes n
+                LEFT JOIN note_overrides o ON o.note_id = n.note_id
+                WHERE n.is_active = 1
+                """
+            ).fetchone()["c"]
+            subcategories = conn.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM (
+                    SELECT DISTINCT
+                        COALESCE(o.category, n.category) AS category,
+                        COALESCE(NULLIF(o.subcategory, ''), n.subcategory) AS subcategory
+                    FROM notes n
+                    LEFT JOIN note_overrides o ON o.note_id = n.note_id
+                    WHERE n.is_active = 1
+                )
+                """
+            ).fetchone()["c"]
+        return {
+            "active_notes": int(active_notes),
+            "categories": int(categories),
+            "subcategories": int(subcategories),
+            "methodology": "Builds a local graph from category, subcategory, note, and recurring keyword nodes. Notes are linked to their local category path and to concept hubs extracted from cached titles and snippets.",
+        }
+
+    def build_mind_map(self) -> dict[str, Any]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    n.note_id,
+                    n.generated_title,
+                    n.original_name,
+                    n.preview_text,
+                    n.search_text,
+                    n.folder_name,
+                    n.modified_at,
+                    n.classifier_confidence,
+                    COALESCE(o.category, n.category) AS category,
+                    COALESCE(NULLIF(o.subcategory, ''), n.subcategory) AS subcategory
+                FROM notes n
+                LEFT JOIN note_overrides o ON o.note_id = n.note_id
+                WHERE n.is_active = 1
+                ORDER BY category, subcategory, n.modified_at DESC
+                """
+            ).fetchall()
+
+        category_counts: Counter[str] = Counter()
+        subcategory_counts: Counter[tuple[str, str]] = Counter()
+        concept_counts: Counter[str] = Counter()
+        note_keywords: dict[str, list[str]] = {}
+        blocked_concepts = {
+            "note",
+            "notes",
+            "new",
+            "version",
+            "things",
+            "thing",
+            "there",
+            "like",
+            "know",
+            "want",
+            "make",
+            "because",
+            "only",
+            "need",
+            "something",
+            "really",
+            "always",
+            "every",
+            "following",
+        }
+
+        for row in rows:
+            category = row["category"] or "Uncategorized"
+            subcategory = row["subcategory"] or "General"
+            category_counts[category] += 1
+            subcategory_counts[(category, subcategory)] += 1
+            source = f"{row['generated_title']} {row['original_name']} {row['preview_text']} {ensure_text(row['search_text'])[:900]}"
+            keywords = []
+            for keyword in extract_keywords(source, limit=7):
+                if keyword in blocked_concepts or len(keyword) < 4:
+                    continue
+                keywords.append(keyword)
+            unique_keywords = list(dict.fromkeys(keywords))[:5]
+            note_keywords[row["note_id"]] = unique_keywords
+            concept_counts.update(unique_keywords)
+
+        top_concepts = {
+            keyword
+            for keyword, count in concept_counts.most_common(220)
+            if count >= 8
+        }
+
+        palette = [
+            "#69e4ff",
+            "#f6cf65",
+            "#ff6f91",
+            "#90f18a",
+            "#b69cff",
+            "#f78fb3",
+            "#7df6d8",
+            "#ff9b6a",
+            "#93b7ff",
+            "#d4f56a",
+        ]
+        category_palette = {
+            category: palette[index % len(palette)]
+            for index, category in enumerate(sorted(category_counts))
+        }
+
+        nodes: list[dict[str, Any]] = [
+            {
+                "id": "root:notes-atlas",
+                "type": "root",
+                "label": "Notes Atlas",
+                "count": len(rows),
+                "size": 28,
+                "color": "#ffffff",
+            }
+        ]
+        links: list[dict[str, Any]] = []
+
+        for category, count in sorted(category_counts.items()):
+            category_id = f"category:{category}"
+            color = category_palette[category]
+            nodes.append(
+                {
+                    "id": category_id,
+                    "type": "category",
+                    "label": category,
+                    "count": count,
+                    "size": min(26, 9 + int(count ** 0.34)),
+                    "color": color,
+                }
+            )
+            links.append({"source": "root:notes-atlas", "target": category_id, "type": "category", "weight": 2.4})
+
+        for (category, subcategory), count in sorted(subcategory_counts.items()):
+            subcategory_id = f"subcategory:{category}/{subcategory}"
+            nodes.append(
+                {
+                    "id": subcategory_id,
+                    "type": "subcategory",
+                    "label": subcategory,
+                    "category": category,
+                    "count": count,
+                    "size": min(20, 7 + int(count ** 0.32)),
+                    "color": category_palette.get(category, "#69e4ff"),
+                }
+            )
+            links.append(
+                {
+                    "source": f"category:{category}",
+                    "target": subcategory_id,
+                    "type": "subcategory",
+                    "weight": 1.8,
+                }
+            )
+
+        for keyword, count in sorted(concept_counts.items()):
+            if keyword not in top_concepts:
+                continue
+            nodes.append(
+                {
+                    "id": f"concept:{keyword}",
+                    "type": "concept",
+                    "label": keyword.title(),
+                    "count": count,
+                    "size": min(15, 5 + int(count ** 0.3)),
+                    "color": "#d7f56f",
+                }
+            )
+
+        for row in rows:
+            category = row["category"] or "Uncategorized"
+            subcategory = row["subcategory"] or "General"
+            note_id = row["note_id"]
+            graph_note_id = f"note:{note_id}"
+            title = row["generated_title"] or row["original_name"] or "Untitled note"
+            nodes.append(
+                {
+                    "id": graph_note_id,
+                    "type": "note",
+                    "label": clip_text(title, 92),
+                    "note_id": note_id,
+                    "category": category,
+                    "subcategory": subcategory,
+                    "folder": row["folder_name"],
+                    "modified_at": row["modified_at"],
+                    "snippet": clip_text(row["preview_text"] or row["search_text"] or row["original_name"], 210),
+                    "confidence": row["classifier_confidence"],
+                    "size": 3.8,
+                    "color": category_palette.get(category, "#69e4ff"),
+                }
+            )
+            links.append(
+                {
+                    "source": f"subcategory:{category}/{subcategory}",
+                    "target": graph_note_id,
+                    "type": "note",
+                    "weight": 0.42,
+                }
+            )
+            for keyword in note_keywords.get(note_id, [])[:3]:
+                if keyword in top_concepts:
+                    links.append(
+                        {
+                            "source": graph_note_id,
+                            "target": f"concept:{keyword}",
+                            "type": "concept",
+                            "weight": 0.18,
+                        }
+                    )
+
+        return {
+            "generated_at": now_iso(),
+            "methodology": {
+                "summary": "Local interactive mind map generated from the Notes Atlas SQLite catalog.",
+                "steps": [
+                    "Every active note becomes a note node.",
+                    "Category and subcategory nodes provide the stable local taxonomy.",
+                    "Recurring keywords from generated titles, original titles, snippets, and cached search text become concept hubs.",
+                    "Links connect category to subcategory, subcategory to note, and note to shared concept hubs.",
+                    "Clicking a note node calls the same local Notes-opening endpoint used by the catalog list.",
+                ],
+            },
+            "counts": {
+                "notes": len(rows),
+                "categories": len(category_counts),
+                "subcategories": len(subcategory_counts),
+                "concepts": len(top_concepts),
+                "nodes": len(nodes),
+                "links": len(links),
+            },
+            "nodes": nodes,
+            "links": links,
         }
 
     def open_note(self, note_id: str) -> None:

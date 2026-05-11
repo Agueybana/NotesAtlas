@@ -24,4 +24,4 @@ if pgrep -f "$ROOT/server.py --host 127.0.0.1 --port 8765" >/dev/null 2>&1; then
 fi
 
 cd "$ROOT"
-nohup "$PYTHON_BIN" "$ROOT/server.py" --host 127.0.0.1 --port 8765 >>"$LOG" 2>&1 &
+nohup "$PYTHON_BIN" -u "$ROOT/server.py" --host 127.0.0.1 --port 8765 >>"$LOG" 2>&1 < /dev/null &

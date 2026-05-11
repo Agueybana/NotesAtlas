@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notes Atlas Mind Map</title>
+    <link rel="stylesheet" href="./mind-map.css" />
+  </head>
+  <body>
+    <main class="map-shell">
+      <canvas id="graphCanvas"></canvas>
+
+      <section class="map-toolbar" aria-label="Mind map controls">
+        <div>
+          <div class="eyebrow">Notes Atlas</div>
+          <h1>Mind Map</h1>
+        </div>
+        <label class="map-search">
+          <span>Search graph</span>
+          <input id="graphSearch" type="search" placeholder="Find notes, categories, concepts" />
+        </label>
+        <label class="map-select">
+          <span>Node type</span>
+          <select id="typeFilter">
+            <option value="all">All nodes</option>
+            <option value="category">Categories</option>
+            <option value="subcategory">Subcategories</option>
+            <option value="concept">Concepts</option>
+            <option value="note">Notes</option>
+          </select>
+        </label>
+        <div class="map-actions">
+          <button id="fitButton" type="button">Fit</button>
+          <button id="labelsButton" type="button">Labels On</button>
+          <button id="pauseButton" type="button">Pause</button>
+        </div>
+      </section>
+
+      <aside class="map-details" id="detailsPanel">
+        <div class="eyebrow">Graph status</div>
+        <h2 id="detailsTitle">Building mind map</h2>
+        <p id="detailsCopy">Reading the local Notes Atlas catalog and preparing graph physics.</p>
+        <div class="detail-grid">
+          <span>Nodes</span><strong id="statNodes">0</strong>
+          <span>Links</span><strong id="statLinks">0</strong>
+          <span>Notes</span><strong id="statNotes">0</strong>
+          <span>Concepts</span><strong id="statConcepts">0</strong>
+        </div>
+      </aside>
+
+      <div id="loadingOverlay" class="loading-overlay">
+        <div class="loader-mark"></div>
+        <strong id="loadingPhase">Loading graph</strong>
+        <span id="loadingMessage">Reading local catalog data.</span>
+        <div class="progress-track">
+          <div id="loadingProgress" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div id="mapToast" class="map-toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <script src="./mind-map.js" defer></script>
+  </body>
+</html>

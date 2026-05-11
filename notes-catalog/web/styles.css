@@ -354,6 +354,44 @@ body {
   font-family: var(--font-serif);
 }
 
+.mind-map-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 380px);
+  gap: 1rem;
+  align-items: stretch;
+  padding: 1.2rem;
+}
+
+.mind-map-copy h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+}
+
+.mind-map-copy p {
+  margin: 0.55rem 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.mind-map-action {
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+}
+
+.mind-map-action .btn {
+  justify-content: center;
+  width: 100%;
+}
+
+.mind-map-status {
+  border: 1px solid rgba(81, 60, 34, 0.1);
+  border-radius: var(--radius-lg);
+  background: var(--panel-strong);
+  padding: 0.95rem;
+}
+
 .hero-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(140px, 1fr));
@@ -658,6 +696,10 @@ body {
   }
 
   .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .mind-map-panel {
     grid-template-columns: 1fr;
   }
 }

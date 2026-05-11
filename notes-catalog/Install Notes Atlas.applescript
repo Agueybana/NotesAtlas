@@ -1,4 +1,4 @@
-set packageVersion to "0.1"
+set packageVersion to "0.2"
 set packageName to "Notes Atlas v" & packageVersion
 set atlasURL to "http://127.0.0.1:8765/"
 set automationSettingsURL to "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
@@ -31,7 +31,7 @@ on error
 	return
 end try
 
-display dialog "This will install " & packageName & " from:\n" & sourceRoot & "\n\nThe installer will copy the full working package, including the Notes Atlas launcher app, installer app, local catalog database, and recovery files." buttons {"Cancel", "Continue"} default button "Continue"
+display dialog "This will install " & packageName & " from:\n" & sourceRoot & "\n\nThe installer will copy the full Notes Atlas package, including the launcher app, installer app, source files, and local runtime data folder." buttons {"Cancel", "Continue"} default button "Continue"
 
 try
 	set chosenFolder to choose folder with prompt "Choose the folder where " & packageName & " should be installed. The installer will create a '" & packageName & "' folder there."

@@ -75,6 +75,12 @@ def build_handler(store: CatalogStore):
             if parsed.path == "/api/status":
                 json_response(self, store.get_sync_status())
                 return
+            if parsed.path == "/api/mind-map-meta":
+                json_response(self, store.mind_map_meta())
+                return
+            if parsed.path == "/api/mind-map":
+                json_response(self, store.build_mind_map())
+                return
             if parsed.path == "/" or parsed.path == "":
                 self.path = "/index.html"
             return super().do_GET()
@@ -126,9 +132,15 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--open-browser", action="store_true")
     parser.add_argument("--sync-only", action="store_true")
+    parser.add_argument("--recategorize-uncategorized", action="store_true")
     args = parser.parse_args()
 
     store = CatalogStore(BASE_DIR)
+    if args.recategorize_uncategorized:
+        result = store.recategorize_uncategorized_blocking()
+        print(json.dumps(result, indent=2))
+        return 0
+
     if args.sync_only:
         store.sync_blocking()
         status = store.get_sync_status()

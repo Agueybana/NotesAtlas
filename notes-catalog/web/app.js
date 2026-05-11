@@ -29,6 +29,10 @@ const els = {
   statTotal: document.getElementById("statTotal"),
   statVisible: document.getElementById("statVisible"),
   statFilter: document.getElementById("statFilter"),
+  mindMapButton: document.getElementById("mindMapButton"),
+  mindMapPhase: document.getElementById("mindMapPhase"),
+  mindMapMessage: document.getElementById("mindMapMessage"),
+  mindMapProgress: document.getElementById("mindMapProgress"),
   categoryDialog: document.getElementById("categoryDialog"),
   categoryForm: document.getElementById("categoryForm"),
   categoryNameInput: document.getElementById("categoryNameInput"),
@@ -440,6 +444,35 @@ async function triggerSync() {
 }
 
 
+function updateMindMapStatus(phase, message, percent) {
+  els.mindMapPhase.textContent = phase;
+  els.mindMapMessage.textContent = message;
+  els.mindMapProgress.style.width = `${percent}%`;
+}
+
+
+async function generateMindMap() {
+  els.mindMapButton.disabled = true;
+  updateMindMapStatus("Preparing", "Reading the local catalog summary.", 22);
+  try {
+    const meta = await fetchJSON("/api/mind-map-meta");
+    updateMindMapStatus(
+      "Indexing",
+      `Preparing ${meta.active_notes.toLocaleString()} notes across ${meta.categories} categories and ${meta.subcategories} subcategories.`,
+      62,
+    );
+    window.setTimeout(() => {
+      updateMindMapStatus("Opening", "Opening the interactive mind map in a new tab.", 100);
+      window.open("/mind-map.html", "_blank", "noopener");
+      els.mindMapButton.disabled = false;
+    }, 420);
+  } catch (error) {
+    updateMindMapStatus("Error", error.message, 0);
+    els.mindMapButton.disabled = false;
+  }
+}
+
+
 let syncPollHandle = null;
 function startSyncPolling() {
   if (syncPollHandle) return;
@@ -469,6 +502,13 @@ function wireEvents() {
   els.syncButton.addEventListener("click", async () => {
     await triggerSync();
     startSyncPolling();
+  });
+
+  els.mindMapButton.addEventListener("click", () => {
+    generateMindMap().catch((error) => {
+      updateMindMapStatus("Error", error.message, 0);
+      els.mindMapButton.disabled = false;
+    });
   });
 
   els.addCategoryButton.addEventListener("click", () => {
